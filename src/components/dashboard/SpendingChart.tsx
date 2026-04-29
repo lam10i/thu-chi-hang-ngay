@@ -17,13 +17,18 @@ import {
   endOfMonth,
   endOfWeek,
   format,
+  isAfter,
+  isSameDay,
   parseISO,
   startOfMonth,
   startOfWeek,
 } from "date-fns";
 import { vi } from "date-fns/locale";
+import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useTransactions } from "@/hooks/useTransactions";
 import { formatVND, formatNumber } from "@/lib/format";
 
@@ -35,23 +40,20 @@ interface Bucket {
   total: number;
 }
 
-function buildBuckets(range: Range): Bucket[] {
-  const now = new Date();
+const WINDOW_SIZE: Record<Range, number> = { day: 14, week: 8, month: 6 };
+
+function buildBuckets(range: Range, anchor: Date): Bucket[] {
   if (range === "day") {
-    // 14 ngày gần nhất
-    return Array.from({ length: 14 }).map((_, i) => {
-      const d = addDays(now, -(13 - i));
-      return {
-        key: format(d, "yyyy-MM-dd"),
-        label: format(d, "dd/MM"),
-        total: 0,
-      };
+    return Array.from({ length: WINDOW_SIZE.day }).map((_, i) => {
+      const d = addDays(anchor, -(WINDOW_SIZE.day - 1 - i));
+      return { key: format(d, "yyyy-MM-dd"), label: format(d, "dd/MM"), total: 0 };
     });
   }
   if (range === "week") {
-    // 8 tuần gần nhất
-    return Array.from({ length: 8 }).map((_, i) => {
-      const ws = startOfWeek(addWeeks(now, -(7 - i)), { weekStartsOn: 1 });
+    return Array.from({ length: WINDOW_SIZE.week }).map((_, i) => {
+      const ws = startOfWeek(addWeeks(anchor, -(WINDOW_SIZE.week - 1 - i)), {
+        weekStartsOn: 1,
+      });
       return {
         key: format(ws, "yyyy-MM-dd"),
         label: `T${format(ws, "dd/MM")}`,
@@ -59,14 +61,9 @@ function buildBuckets(range: Range): Bucket[] {
       };
     });
   }
-  // month: 6 tháng gần nhất
-  return Array.from({ length: 6 }).map((_, i) => {
-    const ms = startOfMonth(addMonths(now, -(5 - i)));
-    return {
-      key: format(ms, "yyyy-MM"),
-      label: format(ms, "MM/yyyy"),
-      total: 0,
-    };
+  return Array.from({ length: WINDOW_SIZE.month }).map((_, i) => {
+    const ms = startOfMonth(addMonths(anchor, -(WINDOW_SIZE.month - 1 - i)));
+    return { key: format(ms, "yyyy-MM"), label: format(ms, "MM/yyyy"), total: 0 };
   });
 }
 
@@ -77,26 +74,48 @@ function bucketKeyFor(date: string, range: Range): string {
   return format(d, "yyyy-MM");
 }
 
-function rangeBounds(range: Range): { start: Date; end: Date } {
-  const now = new Date();
-  if (range === "day") return { start: addDays(now, -13), end: now };
+function rangeBounds(range: Range, anchor: Date): { start: Date; end: Date } {
+  if (range === "day") {
+    return { start: addDays(anchor, -(WINDOW_SIZE.day - 1)), end: anchor };
+  }
   if (range === "week") {
     return {
-      start: startOfWeek(addWeeks(now, -7), { weekStartsOn: 1 }),
-      end: endOfWeek(now, { weekStartsOn: 1 }),
+      start: startOfWeek(addWeeks(anchor, -(WINDOW_SIZE.week - 1)), { weekStartsOn: 1 }),
+      end: endOfWeek(anchor, { weekStartsOn: 1 }),
     };
   }
-  return { start: startOfMonth(addMonths(now, -5)), end: endOfMonth(now) };
+  return {
+    start: startOfMonth(addMonths(anchor, -(WINDOW_SIZE.month - 1))),
+    end: endOfMonth(anchor),
+  };
+}
+
+function shift(range: Range, anchor: Date, direction: -1 | 1): Date {
+  if (range === "day") return addDays(anchor, WINDOW_SIZE.day * direction);
+  if (range === "week") return addWeeks(anchor, WINDOW_SIZE.week * direction);
+  return addMonths(anchor, WINDOW_SIZE.month * direction);
+}
+
+function rangeLabel(range: Range, anchor: Date): string {
+  const { start, end } = rangeBounds(range, anchor);
+  if (range === "day") {
+    return `${format(start, "dd/MM/yyyy")} – ${format(end, "dd/MM/yyyy")}`;
+  }
+  if (range === "week") {
+    return `Tuần ${format(start, "dd/MM/yyyy")} – ${format(end, "dd/MM/yyyy")}`;
+  }
+  return `${format(start, "MM/yyyy")} – ${format(end, "MM/yyyy")}`;
 }
 
 export function SpendingChart() {
   const { transactions } = useTransactions();
   const [range, setRange] = useState<Range>("day");
+  const [anchor, setAnchor] = useState<Date>(new Date());
 
   const data = useMemo(() => {
-    const buckets = buildBuckets(range);
+    const buckets = buildBuckets(range, anchor);
     const map = new Map(buckets.map((b) => [b.key, b]));
-    const { start, end } = rangeBounds(range);
+    const { start, end } = rangeBounds(range, anchor);
 
     for (const t of transactions) {
       try {
@@ -110,28 +129,74 @@ export function SpendingChart() {
       }
     }
     return buckets;
-  }, [transactions, range]);
+  }, [transactions, range, anchor]);
 
   const total = data.reduce((s, b) => s + b.total, 0);
-  const rangeLabel =
-    range === "day" ? "14 ngày qua" : range === "week" ? "8 tuần qua" : "6 tháng qua";
+  const isPresent = isSameDay(anchor, new Date());
+  const canGoForward = !isPresent && !isAfter(anchor, new Date());
+  const anchorISO = format(anchor, "yyyy-MM-dd");
+  const todayISO = format(new Date(), "yyyy-MM-dd");
 
   return (
     <Card>
-      <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2">
-        <div>
-          <CardTitle>Biểu đồ chi tiêu</CardTitle>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {rangeLabel} · Tổng {formatVND(total)}
-          </p>
+      <CardHeader className="flex flex-col gap-3 pb-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <CardTitle>Biểu đồ chi tiêu</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {rangeLabel(range, anchor)} · Tổng {formatVND(total)}
+            </p>
+          </div>
+          <Tabs value={range} onValueChange={(v) => setRange((v as Range) ?? "day")}>
+            <TabsList>
+              <TabsTrigger value="day">Ngày</TabsTrigger>
+              <TabsTrigger value="week">Tuần</TabsTrigger>
+              <TabsTrigger value="month">Tháng</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
-        <Tabs value={range} onValueChange={(v) => setRange(v as Range)}>
-          <TabsList>
-            <TabsTrigger value="day">Ngày</TabsTrigger>
-            <TabsTrigger value="week">Tuần</TabsTrigger>
-            <TabsTrigger value="month">Tháng</TabsTrigger>
-          </TabsList>
-        </Tabs>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label="Lùi khoảng trước"
+            onClick={() => setAnchor((a) => shift(range, a, -1))}
+          >
+            <ChevronLeft className="size-4" />
+          </Button>
+          <Input
+            type="date"
+            value={anchorISO}
+            max={todayISO}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v) setAnchor(parseISO(v));
+            }}
+            className="h-7 w-auto text-xs"
+            aria-label="Chọn ngày kết thúc khoảng xem"
+          />
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label="Tới khoảng sau"
+            onClick={() => setAnchor((a) => shift(range, a, 1))}
+            disabled={!canGoForward}
+          >
+            <ChevronRight className="size-4" />
+          </Button>
+          {!isPresent && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setAnchor(new Date())}
+              className="gap-1 h-7"
+            >
+              <RotateCcw className="size-3" />
+              Hôm nay
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="pt-2">
         <div className="h-64 w-full">
