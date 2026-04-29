@@ -7,15 +7,31 @@
 
 ## 1. Mục đích dự án
 
-Web app cá nhân giúp **ghi chép chi tiêu hằng ngày** và **xem biểu đồ trực quan** theo ngày / tuần / tháng. Phiên bản hiện tại chạy hoàn toàn ở client (không backend, không đăng nhập), dữ liệu lưu trong `localStorage`.
+Web app cá nhân giúp **ghi chép chi tiêu hằng ngày** và **xem biểu đồ trực quan** theo ngày / tuần / tháng. Dữ liệu lưu **cloud** (Supabase Postgres), đăng nhập bằng email Magic Link, đồng bộ trên mọi thiết bị.
 
 > ⚠️ App **CHỈ** ghi chi tiêu (tiền tiêu). KHÔNG có khái niệm thu nhập / số dư. Đừng tự tiện thêm "Thu" trở lại — quyết định cố ý từ người dùng để app gọn nhẹ, đúng nhiệm vụ.
 
-**Đối tượng:** cá nhân, dùng trên 1 thiết bị.
+**Đối tượng:** cá nhân (single-user, không share dữ liệu với người khác).
 
 ---
 
-## 2. Tech stack
+## 2. Trạng thái triển khai (deployment)
+
+**Production live:**
+- App URL: https://thu-chi-hang-ngay.vercel.app
+- GitHub repo (public): https://github.com/lam10i/thu-chi-hang-ngay
+- Hosting: **Vercel** (free Hobby), branch `main` = production, auto-deploy on push
+- Backend: **Supabase** project `thu-chi-hang-ngay` — URL `https://cqeqhminrhfonckfxpsy.supabase.co` (region Asia-Pacific Singapore, free tier)
+
+**ENV vars cần có (cả local lẫn Vercel):**
+- `NEXT_PUBLIC_SUPABASE_URL` — URL project Supabase
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — **legacy anon key** dạng JWT (`eyJ...`), KHÔNG phải `sb_publishable_*` mới (xem mục 9 để hiểu lý do)
+
+**Workflow deploy lần sau:** chỉ cần `git push origin main` → Vercel tự build + deploy ~1 phút.
+
+---
+
+## 3. Tech stack
 
 | Layer | Lựa chọn |
 |---|---|
@@ -28,22 +44,23 @@ Web app cá nhân giúp **ghi chép chi tiêu hằng ngày** và **xem biểu đ
 | Icon | lucide-react |
 | Theme | next-themes (light/dark) |
 | Charts | recharts |
-| State | React Context + custom hooks |
-| Storage | **Supabase** (Postgres) — bảng `transactions` + `categories`, RLS theo `auth.uid()` |
-| Auth | **Supabase Auth** — Google OAuth (provider `google`) qua `@supabase/ssr` |
+| State | React Context + custom hooks (`useTransactions`, `useCategories`, `useAuth`) |
+| Database | **Supabase Postgres** — bảng `transactions` + `categories`, RLS theo `auth.uid()` |
+| Auth | **Supabase Auth** — Magic Link qua email (`signInWithOtp`), session lưu trong cookie qua `@supabase/ssr` |
 | ID transactions | `gen_random_uuid()` (Postgres) |
 | ID categories | slug từ tên (`slugify()` trong `lib/categories.ts`) |
 | Format tiền | `Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' })` |
 
 ---
 
-## 3. Cách chạy dự án
+## 4. Cách chạy dự án
 
 ```bash
 npm install        # Cài dependencies
+cp .env.local.example .env.local
+# Điền 2 biến NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY
 npm run dev        # Chạy dev server (http://localhost:3000)
 npm run build      # Build production
-npm run start      # Chạy production build
 npm run lint       # Lint code
 ```
 
@@ -51,21 +68,25 @@ npm run lint       # Lint code
 
 ---
 
-## 4. Cấu trúc thư mục
+## 5. Cấu trúc thư mục
 
 ```
 src/
 ├── app/
-│   ├── layout.tsx              # ThemeProvider → CategoriesProvider → TransactionsProvider → Header + Toaster
-│   ├── page.tsx                # Dashboard "/" (SummaryCards + SpendingChart + RecentTransactions)
-│   ├── transactions/page.tsx   # Danh sách chi tiêu "/transactions" (filter theo category)
+│   ├── layout.tsx              # ThemeProvider → AuthProvider → CategoriesProvider → TransactionsProvider → AppShell + Toaster
+│   ├── page.tsx                # Dashboard "/" (SummaryCards + SpendingChart + CategoryPieChart + RecentTransactions)
+│   ├── transactions/page.tsx   # Danh sách chi tiêu "/transactions" (TransactionFilters + TransactionList)
 │   ├── categories/page.tsx     # Quản lý danh mục "/categories"
+│   ├── login/page.tsx          # Form Magic Link "/login" — public route
+│   ├── auth/callback/route.ts  # OAuth/OTP callback handler — đổi code thành session cookie
 │   └── globals.css
 ├── components/
 │   ├── ui/                     # shadcn (auto-generated, đừng sửa tay)
 │   ├── theme-provider.tsx
 │   ├── category-icon.tsx       # Map tên icon (string) → component lucide
-│   ├── layout/Header.tsx       # Nav 3 mục + theme toggle
+│   ├── layout/
+│   │   ├── Header.tsx          # Nav 3 mục + theme toggle + avatar dropdown (có nút Đăng xuất)
+│   │   └── AppShell.tsx        # Wrap children, ẩn Header trên route /login
 │   ├── dashboard/
 │   │   ├── SummaryCards.tsx    # 3 thẻ: Hôm nay / Tuần này / Tháng này (gate bằng isLoaded để tránh hydration mismatch)
 │   │   ├── SpendingChart.tsx   # BarChart recharts, tabs Ngày/Tuần/Tháng
@@ -74,128 +95,219 @@ src/
 │   ├── transactions/
 │   │   ├── TransactionForm.tsx # Dialog ghi/sửa chi tiêu (có nút "+ Thêm danh mục" inline)
 │   │   ├── TransactionFilters.tsx # Search + preset (Hôm nay/7d/30d/Tuần/Tháng/Tháng trước/Tự chọn) + date range
-│   │   ├── TransactionList.tsx # Bảng danh sách (nhận ListFilters, tự sort + tổng kết hàng + tổng tiền)
+│   │   ├── TransactionList.tsx # Bảng danh sách (nhận ListFilters, tự sort + tổng kết "Tìm thấy N · Tổng X")
 │   │   └── DeleteConfirm.tsx
 │   └── categories/
 │       └── CategoryForm.tsx    # Dialog thêm/sửa category (palette icon + màu)
 ├── lib/
-│   ├── storage.ts              # readJSON/writeJSON, load/save transactions + categories
+│   ├── supabase/
+│   │   ├── client.ts           # createBrowserClient cho client components
+│   │   └── server.ts           # createServerClient cho server components / route handlers
 │   ├── format.ts               # formatVND, formatNumber, formatDate, todayISO
-│   ├── categories.ts           # DEFAULT_CATEGORIES, CATEGORY_ICONS, CATEGORY_COLORS, stripDiacritics(), slugify()
+│   ├── categories.ts           # DEFAULT_CATEGORIES (chỉ tham chiếu), CATEGORY_ICONS, CATEGORY_COLORS, stripDiacritics(), slugify()
 │   └── utils.ts                # cn() helper
 ├── hooks/
-│   ├── useTransactions.tsx     # CRUD transactions
-│   └── useCategories.tsx       # CRUD categories
-└── types/
-    └── transaction.ts          # Transaction + Category
+│   ├── useAuth.tsx             # AuthProvider (session từ cookie SSR + onAuthStateChange) + signOut
+│   ├── useTransactions.tsx     # CRUD async qua Supabase
+│   └── useCategories.tsx       # CRUD async qua Supabase
+├── types/
+│   └── transaction.ts          # Transaction + Category
+└── middleware.ts               # Refresh session cookie + redirect chưa login → /login (PUBLIC_PATHS = /login, /auth/callback)
+
+supabase/
+└── schema.sql                  # SQL khởi tạo: 2 bảng + RLS policies + trigger seed danh mục mặc định khi user mới
 ```
+
+> **Lưu ý:** Next.js 16 cảnh báo file `middleware.ts` deprecated, đề xuất đổi thành `proxy.ts`. Hiện tại vẫn chạy bình thường, chưa cần migrate gấp.
 
 ---
 
-## 5. Data model
+## 6. Data model (Postgres schema)
 
+```sql
+-- public.transactions
+id          uuid primary key default gen_random_uuid()
+user_id     uuid references auth.users(id) on delete cascade
+amount      bigint check (amount > 0)        -- VND, integer cho an toàn
+category_id text                              -- không có FK để xoá category không lỗi
+note        text
+date        date                              -- ngày phát sinh
+created_at  timestamptz default now()
+
+-- public.categories
+id          text primary key                  -- slug, vd "ca-phe"
+user_id     uuid references auth.users(id) on delete cascade
+name        text
+icon        text                              -- tên icon trong CATEGORY_ICONS
+color       text                              -- hex từ CATEGORY_COLORS
+created_at  timestamptz default now()
+```
+
+**TypeScript domain (frontend):**
 ```ts
 interface Transaction {
-  id: string;          // uuid
-  amount: number;      // VND, > 0
-  category: string;    // id của Category (có thể không tồn tại nếu user xoá category)
-  note?: string;       // ≤ 200 ký tự
+  id: string;          // uuid (đã đổi từ category_id → category trong code)
+  amount: number;      // VND
+  category: string;    // category id
+  note?: string;
   date: string;        // "YYYY-MM-DD"
   createdAt: string;   // ISO datetime
 }
 
 interface Category {
-  id: string;          // slug, vd "ca-phe"
-  name: string;        // "Cà phê"
-  icon: string;        // tên icon trong CATEGORY_ICONS (vd "Coffee")
-  color?: string;      // hex từ CATEGORY_COLORS (vd "#f97316")
+  id: string;
+  name: string;
+  icon: string;
+  color?: string;
 }
 ```
 
-**Categories được lưu trong localStorage** (key `thuchi.categories.v1`). Lần đầu chạy sẽ seed `DEFAULT_CATEGORIES`. User có thể CRUD ở `/categories`.
+**RLS policies:** `auth.uid() = user_id` cho cả SELECT/INSERT/UPDATE/DELETE trên cả 2 bảng.
 
-**Khi xoá category:** transactions tham chiếu vẫn giữ nguyên `category` id, UI fallback về "Khác" + icon `Tag` + màu xám.
+**Trigger seed:** `on_auth_user_created` chạy sau `INSERT auth.users` → tự tạo 8 danh mục mặc định cho user mới (Ăn uống, Cà phê, Đi lại, Mua sắm, Hóa đơn, Giải trí, Sức khỏe, Khác).
 
----
-
-## 6. Storage convention
-
-| Key | Schema | Ghi chú |
-|---|---|---|
-| `thuchi.transactions.v2` | `Transaction[]` | v1 (deprecated) có thêm field `type: "income" \| "expense"`. Khi đổi schema lần sau, **bump version** thành `v3`, viết hàm migration trong `storage.ts`, không sửa schema in-place. |
-| `thuchi.categories.v1` | `Category[]` | Seed lần đầu từ `DEFAULT_CATEGORIES`. |
-
-**SSR safety:** mọi hàm đọc `localStorage` đều check `typeof window !== "undefined"`.
+**Khi xoá category:** transactions giữ nguyên `category_id` (không có FK constraint), UI fallback "Khác" + icon `Tag` + màu xám.
 
 ---
 
 ## 7. Quy ước (conventions)
 
+### Frontend
 - **Tiền tệ:** luôn dùng `formatVND()` từ [src/lib/format.ts](src/lib/format.ts).
 - **Locale ngày:** `vi` (date-fns). Format ngày mặc định: `dd/MM/yyyy`.
-- **Tuần bắt đầu thứ Hai** (`weekStartsOn: 1` trong date-fns).
+- **Tuần bắt đầu thứ Hai** (`weekStartsOn: 1`).
 - **Validation:** zod schema khai báo cùng file với form.
 - **Component file:** mỗi file 1 component default/named export rõ ràng.
 - **shadcn Button KHÔNG có `asChild`:** muốn link styled như button → dùng `<Link className="...">` trực tiếp.
-- **shadcn Select `onValueChange`** signature là `(value: string | null) => void` — luôn wrap khi setState với fallback (`v ?? "all"`), không truyền thẳng `setState`.
-- **Icon palette:** chỉ dùng các icon trong `CATEGORY_ICONS` (đảm bảo `CategoryIcon` map được). Khi thêm icon mới, phải update CẢ `CATEGORY_ICONS` lẫn `ICON_MAP` trong [src/components/category-icon.tsx](src/components/category-icon.tsx).
-- **Bỏ dấu tiếng Việt:** dùng `stripDiacritics()` từ `lib/categories.ts` (không tự viết regex). Search và slugify đều dựa vào hàm này.
+- **shadcn Select `onValueChange`** signature là `(value: string | null) => void` — luôn wrap khi setState với fallback (`v ?? "all"`).
+- **Icon palette:** chỉ dùng các icon trong `CATEGORY_ICONS`. Khi thêm icon mới, update CẢ `CATEGORY_ICONS` lẫn `ICON_MAP` trong [src/components/category-icon.tsx](src/components/category-icon.tsx).
+- **Bỏ dấu tiếng Việt:** dùng `stripDiacritics()` từ `lib/categories.ts`.
 - **Tránh hydration mismatch:** không gọi `new Date()` / `format(new Date(), ...)` trực tiếp trong JSX của client component được prerender. Phải gate qua `isLoaded` hoặc `useEffect` mount. Charts dùng `next/dynamic({ ssr: false })`.
 - **`<body>` có `suppressHydrationWarning`** vì Bitdefender extension chèn attribute (`bis_register`, `__processed_*`) vào DOM trước khi React hydrate.
 
----
-
-## 8. Roadmap (chưa làm)
-
-- [ ] Pie chart phân bổ chi tiêu theo danh mục
-- [ ] Budget tháng theo danh mục + cảnh báo vượt mức
-- [ ] Tìm kiếm theo keyword note + khoảng tiền
-- [ ] Export CSV/Excel
-- [ ] Đồng bộ cloud (Supabase) + multi-device
-- [ ] PWA / offline cài đặt như app
-- [ ] Recurring expenses (chi tiêu định kỳ)
+### Auth & Supabase
+- **Server-side session:** `createClient()` từ `lib/supabase/server.ts` đọc cookie qua `next/headers`. Dùng trong `layout.tsx`, route handlers, server components.
+- **Client-side session:** `createClient()` từ `lib/supabase/client.ts` cho mọi `"use client"` component. AuthProvider subscribe `onAuthStateChange`.
+- **Hooks `useTransactions` / `useCategories`** **bắt buộc async** — return `Promise<void>` hoặc `Promise<Category | null>`. Component caller phải `await` (handler async) để tránh race condition.
+- **Optimistic update**: sau khi insert/update Supabase thành công → set local state ngay (không refetch). Nếu lỗi → toast và không update state.
+- **RLS** đã làm hết việc lọc `user_id` → query không cần `.eq("user_id", user.id)`. Insert PHẢI truyền `user_id: user.id`.
+- **Routes đều dynamic** (server-rendered) vì middleware đọc cookies. Đừng cố static export.
 
 ---
 
-## 9. Đã KHÔNG làm (cố tình)
+## 8. Roadmap
 
-- ❌ **Thu nhập / số dư** — app chỉ ghi chi tiêu, người dùng đã yêu cầu rõ
-- ❌ Backend / API routes
-- ❌ Database (chỉ localStorage)
-- ❌ Auth / multi-user
-- ❌ Test suite (sẽ thêm khi có backend)
+### Đã làm
+- [x] CRUD chi tiêu + danh mục
+- [x] Dashboard 3 thẻ Hôm nay/Tuần/Tháng
+- [x] Bar chart theo ngày/tuần/tháng
+- [x] Pie chart phân bổ theo danh mục
+- [x] Filter + search + date range
+- [x] Cloud sync (Supabase) + auth Magic Link
+- [x] Deploy production Vercel
+
+### Bước tiếp theo (đề xuất priority)
+
+1. **🔥 Cao — chống Supabase free tier auto-pause sau 7 ngày không activity**
+   - User mở app hằng ngày thì không lo, nhưng nếu nghỉ phép vài tuần → app down, phải vào Supabase bấm Resume
+   - Option A: Setup Vercel Cron Job (cần Pro plan, bỏ qua) hoặc GitHub Actions chạy cron ping
+   - Option B: Coi như chấp nhận, có vấn đề thì Resume thủ công
+
+2. **🔥 Cao — Setup custom SMTP (Resend) để hết bị rate limit email 3-4/giờ**
+   - Resend free tier 100 emails/ngày. Vào Supabase → Auth → SMTP Settings paste config
+   - Cần thiết nếu hay đăng xuất rồi đăng nhập lại trên nhiều thiết bị
+
+3. **TB — Quick parse "k/tr" trong amount input**
+   - Gõ "50k" → 50.000, "1.5tr" → 1.500.000. Tiện cho người Việt
+   - File: [src/components/transactions/TransactionForm.tsx](src/components/transactions/TransactionForm.tsx)
+
+4. **TB — Edit transaction với category đã xoá**
+   - Mở edit → Select category trống vì id cũ không còn. Hiện badge cảnh báo + buộc chọn lại
+
+5. **TB — Bảng transactions overflow ngang trên mobile**
+   - Bọc `<Table>` trong `<div className="overflow-x-auto">`
+
+6. **Thấp — Export/Import JSON backup** (giờ ít cần vì đã có cloud, nhưng để user tự backup vẫn hữu ích)
+
+7. **Thấp — PWA / Add to Home Screen UX** (manifest + icons)
+
+8. **Thấp — Recurring expenses, Budget per category**
+
+### Đã KHÔNG làm (cố tình)
+- ❌ **Thu nhập / số dư** — app chỉ ghi chi tiêu
+- ❌ **Multi-user / share data** — single-user, mỗi account có data riêng
+- ❌ **Migration data localStorage cũ → cloud** — skip để giảm scope, app vừa launch chưa có data đáng kể
+- ❌ Test suite (sẽ thêm khi app stable)
 - ❌ i18n (chỉ tiếng Việt)
 - ❌ Multi-currency
 
 ---
 
-## 10. Lịch sử cập nhật
+## 9. Quyết định quan trọng (decision log)
+
+### D1. Chọn Supabase thay Firebase / Neon / PlanetScale
+**Tại sao:** Free tier rộng (500MB DB, 50k users), Postgres thật (RLS strong, không phải NoSQL), Auth + DB cùng 1 chỗ, SDK TS tốt. Phù hợp cho cá nhân/MVP.
+
+### D2. Magic Link thay vì Google OAuth
+**Tại sao:** Setup Magic Link mất ~2 phút (chỉ bật Email provider, mặc định đã bật). Google OAuth phải sang Google Cloud Console tạo OAuth Client + redirect URI + Authorized JavaScript origin → ~10-15 phút và dễ vướng. App cá nhân không cần "1-click sign in" hoành tráng. Trade-off: mỗi lần login phải mở email (nhưng session lưu cookie vài tuần nên ít khi cần).
+
+### D3. Dùng legacy anon key (`eyJ...` JWT) thay vì publishable key mới (`sb_publishable_*`)
+**Tại sao:** Supabase mới ra format key `sb_publishable_*` thay anon key cũ. Tuy nhiên khi test thực tế, gọi `supabase.auth.signInWithOtp()` với key mới báo **"Invalid API key"** — Auth API endpoint chưa fully support format mới (tính tới SDK `@supabase/supabase-js@2.105.1`). Quay về dùng legacy anon key (lấy từ tab "Legacy anon, service_role API keys" trong Supabase Settings → API). Khi nào SDK update support thì có thể đổi lại.
+
+### D4. Single-user, không có concept "household/group"
+**Tại sao:** User xác nhận chỉ mình dùng (không share vợ/chồng/gia đình). Schema thiết kế `user_id` 1-1, RLS đơn giản. Sau muốn multi-user phải refactor sang model `household_members`.
+
+### D5. Bump storage key v1 → v2 khi đổi schema, không in-place migration
+**Tại sao:** Convention ở phase localStorage, giữ nguyên cho phase Supabase: schema thay đổi → bump version, viết migration tách bạch. Hiện tại `transactions.v2` (bỏ field `type` "income/expense") và `categories.v1` (deprecated, dữ liệu localStorage cũ KHÔNG migrate lên Supabase).
+
+### D6. Public GitHub repo
+**Tại sao:** User chọn public. Code có thể vào portfolio, không có secret nào commit (`.env.local` đã trong `.gitignore`). Anon key public là an toàn vì RLS bảo vệ.
+
+### D7. Hosting: Vercel free Hobby
+**Tại sao:** Chính chủ Next.js, zero-config, auto-deploy từ GitHub. Free tier 100GB bandwidth/tháng quá đủ cho cá nhân. Không cần Pro plan.
+
+### D8. Skip migration localStorage → Supabase
+**Tại sao:** App vừa scaffold, user mới nhập 1-2 transaction test. Tốn ~30 phút code migration banner "import data cũ" nhưng giá trị thấp → cắt khỏi scope.
+
+---
+
+## 10. Known issues / gotchas
+
+- **Supabase free tier auto-pause sau 7 ngày không activity** → app sẽ báo lỗi DB, vào dashboard bấm Resume (data còn nguyên)
+- **Email rate limit 3-4/giờ** với Supabase built-in SMTP → spam test login sẽ bị cấm tạm thời
+- **Recharts width(-1) warning** khi prerender → đã workaround bằng `next/dynamic({ ssr: false })` cho cả 2 chart, nhưng vẫn có thể thấy warning trong console hot reload
+- **Next.js 16 deprecation:** `middleware.ts` → `proxy.ts`. Để ý khi upgrade Next 17
+- **Cần 2 ENV vars** ở mọi nơi (local + Vercel + nếu user clone về máy khác). Đảm bảo có `.env.local.example` để hint
+
+---
+
+## 11. Lịch sử cập nhật
 
 - v0.1 — Khởi tạo plan + tech stack.
 - v0.2 — Hoàn thành v1: Dashboard (Thu+Chi+Số dư), trang Giao dịch CRUD, TransactionForm với radio Thu/Chi.
 - **v0.3 — Refactor lớn theo yêu cầu user:**
   - Loại bỏ hoàn toàn khái niệm "Thu" (TransactionType, radio chọn loại, tabs filter)
-  - Bump storage key `thuchi.transactions.v1` → `v2` (schema không còn `type`)
+  - Bump storage key `thuchi.transactions.v1` → `v2`
   - SummaryCards đổi sang **Hôm nay / Tuần này / Tháng này**
-  - Thêm **SpendingChart** (recharts BarChart) với tabs Ngày (14 ngày) / Tuần (8 tuần) / Tháng (6 tháng)
-  - **Categories trở thành dữ liệu user-CRUD** (storage `thuchi.categories.v1`), thêm hook `useCategories` + trang `/categories` + dialog chọn icon/màu
-  - TransactionForm có nút "+ Thêm danh mục" inline (mở CategoryForm, auto-select category mới)
-  - Header thêm icon cho từng nav item, brand đổi thành "Sổ Chi Tiêu"
-  - Mở rộng palette icon (30 icons) và 12 màu cho category
+  - Thêm **SpendingChart** (recharts BarChart) tabs Ngày/Tuần/Tháng
+  - **Categories user-CRUD** (storage `thuchi.categories.v1`), thêm trang `/categories`
+  - TransactionForm có nút "+ Thêm danh mục" inline
+  - Header nav có icon, brand "Sổ Chi Tiêu"
+  - 30 icons + 12 màu
 - **v0.4 — Pie chart + filter nâng cao + cleanup:**
-  - Thêm **CategoryPieChart** (donut, tabs Tuần/Tháng/Tất cả, legend dạng progress bar có icon + %)
-  - Thêm **TransactionFilters**: search (bỏ dấu tiếng Việt), preset thời gian (Hôm nay/7d/30d/Tuần/Tháng/Tháng trước/Tự chọn), date range tuỳ chỉnh, nút xoá filter
-  - `TransactionList` đổi prop từ `filterCategory` sang `filters: ListFilters`, thêm dòng tổng kết "Tìm thấy N · Tổng X"
-  - Fix bug hydration mismatch SummaryCards (gate bằng `isLoaded`)
-  - Thêm `suppressHydrationWarning` cho `<body>` (chống extension warning)
-  - Refactor `stripDiacritics()` dùng chung cho slugify + search normalize
-  - Xoá hàm `isSameMonth` không dùng
-- **v0.5 — Cloud sync (Supabase):**
-  - Thay localStorage bằng **Supabase Postgres** + Auth (Google OAuth)
-  - Schema: `transactions` (uuid, user_id, amount, category_id, note, date) + `categories` (text id, user_id, name, icon, color). RLS theo `auth.uid()`. Trigger `on_auth_user_created` seed danh mục mặc định khi user mới đăng ký
-  - Files mới: `src/lib/supabase/{client,server}.ts`, `src/middleware.ts` (redirect chưa login → `/login`), `src/hooks/useAuth.tsx`, `src/app/login/page.tsx`, `src/app/auth/callback/route.ts`, `src/components/layout/AppShell.tsx` (ẩn Header trên `/login`), `supabase/schema.sql` (paste vào Supabase SQL Editor)
-  - `useTransactions` + `useCategories` refactor sang async (Promise return), query Supabase, optimistic update local state
-  - Header có avatar Google + dropdown Đăng xuất
-  - ENV: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (cả local `.env.local` lẫn Vercel project settings)
-  - Routes giờ dynamic (server-rendered) vì middleware đọc cookies
-  - Dữ liệu localStorage cũ KHÔNG migrate tự động (skip để giảm scope, app mới nhập vài giao dịch test)
+  - **CategoryPieChart** (donut, tabs Tuần/Tháng/Tất cả)
+  - **TransactionFilters**: search bỏ dấu, preset thời gian, date range
+  - `TransactionList` đổi prop sang `filters: ListFilters`, hiện "Tìm thấy N · Tổng X"
+  - Fix hydration mismatch SummaryCards
+  - `suppressHydrationWarning` cho `<body>`
+  - Refactor `stripDiacritics()` chung
+  - Xoá `isSameMonth` không dùng
+- **v0.5 — Cloud sync (Supabase) + Deploy:**
+  - **Backend**: Supabase Postgres + Magic Link auth (chuyển từ Google OAuth ban đầu vì setup nhanh hơn — xem D2)
+  - Schema 2 bảng + RLS theo `auth.uid()` + trigger seed danh mục mặc định
+  - Files mới: `lib/supabase/{client,server}.ts`, `middleware.ts`, `hooks/useAuth.tsx`, `app/login/page.tsx`, `app/auth/callback/route.ts`, `components/layout/AppShell.tsx`, `supabase/schema.sql`
+  - `useTransactions` + `useCategories` refactor sang async, query Supabase
+  - Header có avatar + dropdown Đăng xuất
+  - **Deploy production** lên https://thu-chi-hang-ngay.vercel.app (auto từ GitHub `main`)
+  - Phải dùng **legacy anon key** (`eyJ...`) thay publishable key mới — xem D3
+  - Skip migration localStorage cũ — xem D8
