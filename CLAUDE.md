@@ -22,15 +22,17 @@ Web app cá nhân giúp **ghi chép chi tiêu hằng ngày** và **xem biểu đ
 | Framework | Next.js 16 (App Router, Turbopack) |
 | Ngôn ngữ | TypeScript (strict) |
 | Styling | Tailwind CSS v4 |
-| UI components | shadcn/ui (style "New York", base color "Slate") — phiên bản dùng `@base-ui/react` (KHÔNG hỗ trợ prop `asChild` trên Button) |
+| UI components | shadcn/ui (style "New York", base color "Slate") — phiên bản dùng `@base-ui/react` (KHÔNG hỗ trợ prop `asChild` trên Button hay DropdownMenuTrigger) |
 | Form | react-hook-form + zod |
 | Date | date-fns (locale `vi`) |
 | Icon | lucide-react |
 | Theme | next-themes (light/dark) |
 | Charts | recharts |
 | State | React Context + custom hooks |
-| Storage | `localStorage` |
-| ID | `crypto.randomUUID()` |
+| Storage | **Supabase** (Postgres) — bảng `transactions` + `categories`, RLS theo `auth.uid()` |
+| Auth | **Supabase Auth** — Google OAuth (provider `google`) qua `@supabase/ssr` |
+| ID transactions | `gen_random_uuid()` (Postgres) |
+| ID categories | slug từ tên (`slugify()` trong `lib/categories.ts`) |
 | Format tiền | `Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' })` |
 
 ---
@@ -188,3 +190,12 @@ interface Category {
   - Thêm `suppressHydrationWarning` cho `<body>` (chống extension warning)
   - Refactor `stripDiacritics()` dùng chung cho slugify + search normalize
   - Xoá hàm `isSameMonth` không dùng
+- **v0.5 — Cloud sync (Supabase):**
+  - Thay localStorage bằng **Supabase Postgres** + Auth (Google OAuth)
+  - Schema: `transactions` (uuid, user_id, amount, category_id, note, date) + `categories` (text id, user_id, name, icon, color). RLS theo `auth.uid()`. Trigger `on_auth_user_created` seed danh mục mặc định khi user mới đăng ký
+  - Files mới: `src/lib/supabase/{client,server}.ts`, `src/middleware.ts` (redirect chưa login → `/login`), `src/hooks/useAuth.tsx`, `src/app/login/page.tsx`, `src/app/auth/callback/route.ts`, `src/components/layout/AppShell.tsx` (ẩn Header trên `/login`), `supabase/schema.sql` (paste vào Supabase SQL Editor)
+  - `useTransactions` + `useCategories` refactor sang async (Promise return), query Supabase, optimistic update local state
+  - Header có avatar Google + dropdown Đăng xuất
+  - ENV: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (cả local `.env.local` lẫn Vercel project settings)
+  - Routes giờ dynamic (server-rendered) vì middleware đọc cookies
+  - Dữ liệu localStorage cũ KHÔNG migrate tự động (skip để giảm scope, app mới nhập vài giao dịch test)

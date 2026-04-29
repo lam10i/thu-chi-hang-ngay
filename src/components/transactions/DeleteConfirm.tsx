@@ -39,9 +39,9 @@ export function DeleteConfirm({ transaction, onClose }: Props) {
           <AlertDialogCancel>Huỷ</AlertDialogCancel>
           <AlertDialogAction
             className="bg-rose-600 text-white hover:bg-rose-700"
-            onClick={() => {
+            onClick={async () => {
               if (transaction) {
-                deleteTransaction(transaction.id);
+                await deleteTransaction(transaction.id);
                 toast.success("Đã xoá giao dịch");
               }
               onClose();

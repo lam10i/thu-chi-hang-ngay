@@ -4,8 +4,10 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TransactionsProvider } from "@/hooks/useTransactions";
 import { CategoriesProvider } from "@/hooks/useCategories";
-import { Header } from "@/components/layout/Header";
+import { AuthProvider } from "@/hooks/useAuth";
+import { AppShell } from "@/components/layout/AppShell";
 import { Toaster } from "@/components/ui/sonner";
+import { createClient } from "@/lib/supabase/server";
 
 const inter = Inter({
   variable: "--font-sans",
@@ -17,9 +19,14 @@ export const metadata: Metadata = {
   description: "Ứng dụng ghi chép chi tiêu cá nhân và xem biểu đồ trực quan",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const supabase = await createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
   return (
     <html lang="vi" suppressHydrationWarning className={`${inter.variable} h-full antialiased`}>
       <body
@@ -27,15 +34,14 @@ export default function RootLayout({
         className="min-h-full flex flex-col bg-background text-foreground"
       >
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <CategoriesProvider>
-            <TransactionsProvider>
-              <Header />
-              <main className="flex-1 mx-auto w-full max-w-5xl px-4 py-6">
-                {children}
-              </main>
-              <Toaster richColors position="top-right" />
-            </TransactionsProvider>
-          </CategoriesProvider>
+          <AuthProvider initialSession={session}>
+            <CategoriesProvider>
+              <TransactionsProvider>
+                <AppShell>{children}</AppShell>
+                <Toaster richColors position="top-right" />
+              </TransactionsProvider>
+            </CategoriesProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

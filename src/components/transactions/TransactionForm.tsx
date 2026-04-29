@@ -98,22 +98,18 @@ export function TransactionForm({ open, onOpenChange, editing }: TransactionForm
     setAmountDisplay(defaults.amount > 0 ? formatNumber(defaults.amount) : "");
   }, [defaults]);
 
-  const onSubmit = handleSubmit((values) => {
+  const onSubmit = handleSubmit(async (values) => {
+    const payload = {
+      amount: values.amount,
+      category: values.category,
+      date: values.date,
+      note: values.note?.trim() || undefined,
+    };
     if (isEdit && editing) {
-      updateTransaction(editing.id, {
-        amount: values.amount,
-        category: values.category,
-        date: values.date,
-        note: values.note?.trim() || undefined,
-      });
+      await updateTransaction(editing.id, payload);
       toast.success("Đã cập nhật giao dịch");
     } else {
-      addTransaction({
-        amount: values.amount,
-        category: values.category,
-        date: values.date,
-        note: values.note?.trim() || undefined,
-      });
+      await addTransaction(payload);
       toast.success("Đã ghi khoản chi");
     }
     onOpenChange(false);

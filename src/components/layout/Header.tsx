@@ -4,8 +4,25 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, ListChecks, Moon, Sun, Tags, Wallet } from "lucide-react";
+import {
+  LayoutDashboard,
+  ListChecks,
+  LogOut,
+  Moon,
+  Sun,
+  Tags,
+  Wallet,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -32,6 +49,48 @@ function ThemeToggle() {
         <Moon className="size-4" />
       )}
     </Button>
+  );
+}
+
+function UserMenu() {
+  const { user, signOut } = useAuth();
+  if (!user) return null;
+
+  const email = user.email ?? "";
+  const name =
+    (user.user_metadata?.full_name as string | undefined) ??
+    (user.user_metadata?.name as string | undefined) ??
+    email;
+  const avatar = user.user_metadata?.avatar_url as string | undefined;
+  const initial = (name || email || "?").charAt(0).toUpperCase();
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="Tài khoản"
+        className="flex size-8 items-center justify-center rounded-full bg-muted overflow-hidden hover:opacity-80 transition"
+      >
+        {avatar ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={avatar} alt={name} className="size-full object-cover" />
+        ) : (
+          <span className="text-sm font-medium">{initial}</span>
+        )}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel>
+          <div className="font-medium truncate">{name}</div>
+          <div className="text-xs font-normal text-muted-foreground truncate">
+            {email}
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => void signOut()} className="gap-2">
+          <LogOut className="size-4" />
+          Đăng xuất
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -68,8 +127,9 @@ export function Header() {
             );
           })}
         </nav>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
           <ThemeToggle />
+          <UserMenu />
         </div>
       </div>
     </header>

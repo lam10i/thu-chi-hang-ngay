@@ -131,9 +131,9 @@ export default function CategoriesPage() {
             <AlertDialogCancel>Huỷ</AlertDialogCancel>
             <AlertDialogAction
               className="bg-rose-600 text-white hover:bg-rose-700"
-              onClick={() => {
+              onClick={async () => {
                 if (deleting) {
-                  deleteCategory(deleting.id);
+                  await deleteCategory(deleting.id);
                   toast.success("Đã xoá danh mục");
                 }
                 setDeleting(null);

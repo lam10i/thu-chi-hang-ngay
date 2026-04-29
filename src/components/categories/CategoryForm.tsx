@@ -61,14 +61,16 @@ export function CategoryForm({ open, onOpenChange, editing, onCreated }: Props) 
     }
   }, [open, editing, reset]);
 
-  const onSubmit = handleSubmit((values) => {
+  const onSubmit = handleSubmit(async (values) => {
     if (isEdit && editing) {
-      updateCategory(editing.id, { name: values.name, icon, color });
+      await updateCategory(editing.id, { name: values.name, icon, color });
       toast.success("Đã cập nhật danh mục");
     } else {
-      const created = addCategory({ name: values.name, icon, color });
-      toast.success("Đã thêm danh mục");
-      onCreated?.(created);
+      const created = await addCategory({ name: values.name, icon, color });
+      if (created) {
+        toast.success("Đã thêm danh mục");
+        onCreated?.(created);
+      }
     }
     onOpenChange(false);
   });
