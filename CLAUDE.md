@@ -89,7 +89,7 @@ src/
 │   │   ├── Header.tsx          # Nav 3 mục + theme toggle + avatar dropdown (có nút Đăng xuất)
 │   │   └── AppShell.tsx        # Wrap children, ẩn Header trên route /login
 │   ├── dashboard/
-│   │   ├── SummaryCards.tsx    # 3 thẻ: Hôm nay / Tuần này / Tháng này (gate bằng isLoaded để tránh hydration mismatch)
+│   │   ├── SummaryCards.tsx    # 3 thẻ Hôm nay / Tuần này / Tháng này (gate isLoaded). Tuần & Tháng hiện badge so sánh % vs kỳ trước (đỏ = tăng/xấu, xanh = giảm/tốt)
 │   │   ├── SpendingChart.tsx   # BarChart recharts, tabs Ngày/Tuần/Tháng + nav controls (←/→/date picker/Hôm nay) dịch theo nguyên window
 │   │   ├── CategoryPieChart.tsx # Donut chart phân bổ theo category, tabs Tuần/Tháng/Tất cả + nav controls (ẩn khi tab "Tất cả")
 │   │   └── RecentTransactions.tsx
@@ -334,6 +334,10 @@ interface Category {
   - Workflow `.github/workflows/keep-supabase-alive.yml`: cron `0 0 */5 * *` ping `GET /rest/v1/categories?select=id&limit=1` với header `apikey + Authorization`. Coi 200/401/404 đều là DB awake (không lỗi network/timeout).
   - Secrets `SUPABASE_URL` + `SUPABASE_ANON_KEY` add vào GitHub repo (không commit, mặc dù anon key vốn public — best practice).
   - Có thể trigger manual qua Actions tab → "Run workflow" để test bất kỳ lúc nào.
+- **v1.0 — So sánh tuần/tháng vs kỳ trước:**
+  - SummaryCards thẻ "Tuần này" và "Tháng này" thêm badge `↑ +12% vs tuần/tháng trước` (đỏ nếu tăng, xanh nếu giảm, gray nếu chưa có dữ liệu kỳ trước)
+  - Component `ComparisonBadge` mới trong cùng file. Edge case: prev=0 → "Chưa có dữ liệu", diff <1% → "Không đổi"
+  - Bỏ qua "Hôm nay vs hôm qua" vì daily noise quá lớn, ít insight
 - **v0.9 — Chi phí cố định hằng tháng (Recurring page):**
   - Trang mới `/recurring` (nav "Cố định") để CRUD các khoản phải trả đều đặn (tiền nhà, internet, gym, Netflix...). KHÔNG tự tạo transaction — chỉ là list tham khảo + thống kê tổng.
   - Bảng mới `public.fixed_costs` (uuid, user_id, name, amount, category_id?, note?, created_at) + RLS theo `auth.uid()` — migration ở [supabase/migrations/002_fixed_costs.sql](supabase/migrations/002_fixed_costs.sql)
