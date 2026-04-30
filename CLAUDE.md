@@ -89,8 +89,8 @@ src/
 │   │   └── AppShell.tsx        # Wrap children, ẩn Header trên route /login
 │   ├── dashboard/
 │   │   ├── SummaryCards.tsx    # 3 thẻ: Hôm nay / Tuần này / Tháng này (gate bằng isLoaded để tránh hydration mismatch)
-│   │   ├── SpendingChart.tsx   # BarChart recharts, tabs Ngày/Tuần/Tháng
-│   │   ├── CategoryPieChart.tsx # Donut chart phân bổ theo category, tabs Tuần/Tháng/Tất cả
+│   │   ├── SpendingChart.tsx   # BarChart recharts, tabs Ngày/Tuần/Tháng + nav controls (←/→/date picker/Hôm nay) dịch theo nguyên window
+│   │   ├── CategoryPieChart.tsx # Donut chart phân bổ theo category, tabs Tuần/Tháng/Tất cả + nav controls (ẩn khi tab "Tất cả")
 │   │   └── RecentTransactions.tsx
 │   ├── transactions/
 │   │   ├── TransactionForm.tsx # Dialog ghi/sửa chi tiêu (có nút "+ Thêm danh mục" inline)
@@ -200,8 +200,8 @@ interface Category {
 ### Đã làm
 - [x] CRUD chi tiêu + danh mục
 - [x] Dashboard 3 thẻ Hôm nay/Tuần/Tháng
-- [x] Bar chart theo ngày/tuần/tháng
-- [x] Pie chart phân bổ theo danh mục
+- [x] Bar chart theo ngày/tuần/tháng + **navigation lùi/tới khoảng tuỳ ý + date picker**
+- [x] Pie chart phân bổ theo danh mục + **navigation tuần/tháng tuỳ ý**
 - [x] Filter + search + date range
 - [x] Cloud sync (Supabase) + auth Magic Link
 - [x] Deploy production Vercel
@@ -311,3 +311,18 @@ interface Category {
   - **Deploy production** lên https://thu-chi-hang-ngay.vercel.app (auto từ GitHub `main`)
   - Phải dùng **legacy anon key** (`eyJ...`) thay publishable key mới — xem D3
   - Skip migration localStorage cũ — xem D8
+- **v0.6 — SpendingChart navigation tuỳ ý:**
+  - User report: chỉ xem được khoảng kết thúc tại hôm nay (14d/8w/6m), không xem được quá khứ xa
+  - Thêm `anchor: Date` state vào `SpendingChart`, mặc định `new Date()`
+  - 3 control mới ở header: nút `←` lùi nguyên window, nút `→` tới (disabled nếu sẽ vượt hôm nay), date picker `<input type="date">` jump anchor, nút "Hôm nay" reset (chỉ hiện khi anchor ≠ today)
+  - Helper mới: `shift(range, anchor, dir)`, `rangeLabel(range, anchor)`. `buildBuckets()` và `rangeBounds()` nhận thêm tham số `anchor`
+  - Constant `WINDOW_SIZE = { day: 14, week: 8, month: 6 }` tách ra cho dễ chỉnh
+  - Header label đổi từ "14 ngày qua" → "16/04/2026 – 29/04/2026"
+- **v0.7 — CategoryPieChart navigation (consistency với SpendingChart):**
+  - Áp dụng pattern y v0.6: `anchor` state + nút `←/→` + date picker + nút "Hôm nay"
+  - Refactor `inRange(dateISO, range, anchor)`:
+    - `week`: 7 ngày kết thúc tại anchor
+    - `month`: nguyên tháng chứa anchor (`startOfMonth` → `endOfMonth`)
+    - `all`: bỏ qua anchor, ẩn toàn bộ control nav
+  - Header label theo range: tuần "02/04 – 08/04", tháng "04/2026", all "Tất cả"
+  - Nút `→` disabled khi `anchor + 1 unit > today`

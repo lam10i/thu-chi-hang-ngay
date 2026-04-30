@@ -8,9 +8,22 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import { addDays, format, parseISO, startOfMonth } from "date-fns";
+import {
+  addDays,
+  addMonths,
+  addWeeks,
+  endOfMonth,
+  format,
+  isAfter,
+  isSameDay,
+  parseISO,
+  startOfMonth,
+} from "date-fns";
+import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useCategories } from "@/hooks/useCategories";
 import { CategoryIcon } from "@/components/category-icon";
@@ -28,26 +41,49 @@ interface Slice {
 
 const FALLBACK_COLOR = "#64748b";
 
-function inRange(dateISO: string, range: Range): boolean {
+function rangeBounds(range: Range, anchor: Date): { start: Date | null; end: Date | null } {
+  if (range === "all") return { start: null, end: null };
+  if (range === "week") return { start: addDays(anchor, -6), end: anchor };
+  return { start: startOfMonth(anchor), end: endOfMonth(anchor) };
+}
+
+function inRange(dateISO: string, range: Range, anchor: Date): boolean {
   if (range === "all") return true;
   try {
     const d = parseISO(dateISO);
-    if (range === "week") return d >= addDays(new Date(), -6);
-    return d >= startOfMonth(new Date());
+    const { start, end } = rangeBounds(range, anchor);
+    if (!start || !end) return true;
+    return d >= start && d <= end;
   } catch {
     return false;
   }
+}
+
+function shift(range: Range, anchor: Date, direction: -1 | 1): Date {
+  if (range === "week") return addWeeks(anchor, direction);
+  if (range === "month") return addMonths(anchor, direction);
+  return anchor;
+}
+
+function rangeLabel(range: Range, anchor: Date): string {
+  if (range === "all") return "Tất cả";
+  if (range === "week") {
+    const { start, end } = rangeBounds(range, anchor);
+    return `${format(start!, "dd/MM/yyyy")} – ${format(end!, "dd/MM/yyyy")}`;
+  }
+  return format(anchor, "MM/yyyy");
 }
 
 export function CategoryPieChart() {
   const { transactions } = useTransactions();
   const { categories, getById } = useCategories();
   const [range, setRange] = useState<Range>("month");
+  const [anchor, setAnchor] = useState<Date>(new Date());
 
   const slices = useMemo<Slice[]>(() => {
     const totals = new Map<string, number>();
     for (const t of transactions) {
-      if (!inRange(t.date, range)) continue;
+      if (!inRange(t.date, range, anchor)) continue;
       totals.set(t.category, (totals.get(t.category) ?? 0) + t.amount);
     }
     const result: Slice[] = [];
@@ -63,28 +99,78 @@ export function CategoryPieChart() {
     }
     return result.sort((a, b) => b.value - a.value);
     // categories used so dependency array picks up renames/colors
-  }, [transactions, range, getById, categories]);
+  }, [transactions, range, anchor, getById, categories]);
 
   const total = slices.reduce((s, x) => s + x.value, 0);
-  const rangeLabel =
-    range === "week" ? "7 ngày qua" : range === "month" ? format(new Date(), "MM/yyyy") : "Tất cả";
+  const isPresent = isSameDay(anchor, new Date());
+  const nextAnchor = shift(range, anchor, 1);
+  const canGoForward = !isAfter(nextAnchor, new Date()) || isSameDay(nextAnchor, new Date());
+  const anchorISO = format(anchor, "yyyy-MM-dd");
+  const todayISO = format(new Date(), "yyyy-MM-dd");
+  const showNav = range !== "all";
 
   return (
     <Card>
-      <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2">
-        <div>
-          <CardTitle>Chi tiêu theo danh mục</CardTitle>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {rangeLabel} · Tổng {formatVND(total)}
-          </p>
+      <CardHeader className="flex flex-col gap-3 pb-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <CardTitle>Chi tiêu theo danh mục</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {rangeLabel(range, anchor)} · Tổng {formatVND(total)}
+            </p>
+          </div>
+          <Tabs value={range} onValueChange={(v) => setRange((v as Range) ?? "month")}>
+            <TabsList>
+              <TabsTrigger value="week">Tuần</TabsTrigger>
+              <TabsTrigger value="month">Tháng</TabsTrigger>
+              <TabsTrigger value="all">Tất cả</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
-        <Tabs value={range} onValueChange={(v) => setRange((v as Range) ?? "month")}>
-          <TabsList>
-            <TabsTrigger value="week">Tuần</TabsTrigger>
-            <TabsTrigger value="month">Tháng</TabsTrigger>
-            <TabsTrigger value="all">Tất cả</TabsTrigger>
-          </TabsList>
-        </Tabs>
+
+        {showNav && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              aria-label={range === "week" ? "Tuần trước" : "Tháng trước"}
+              onClick={() => setAnchor((a) => shift(range, a, -1))}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <Input
+              type="date"
+              value={anchorISO}
+              max={todayISO}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v) setAnchor(parseISO(v));
+              }}
+              className="h-7 w-auto text-xs"
+              aria-label="Chọn ngày trong khoảng xem"
+            />
+            <Button
+              variant="outline"
+              size="icon-sm"
+              aria-label={range === "week" ? "Tuần sau" : "Tháng sau"}
+              onClick={() => setAnchor((a) => shift(range, a, 1))}
+              disabled={!canGoForward}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+            {!isPresent && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setAnchor(new Date())}
+                className="gap-1 h-7"
+              >
+                <RotateCcw className="size-3" />
+                Hôm nay
+              </Button>
+            )}
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         {slices.length === 0 ? (
