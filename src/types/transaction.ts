@@ -13,3 +13,12 @@ export interface Category {
   icon: string;
   color?: string;
 }
+
+export interface FixedCost {
+  id: string;
+  name: string;
+  amount: number;
+  category?: string;
+  note?: string;
+  createdAt: string;
+}

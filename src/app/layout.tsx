@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TransactionsProvider } from "@/hooks/useTransactions";
 import { CategoriesProvider } from "@/hooks/useCategories";
+import { FixedCostsProvider } from "@/hooks/useFixedCosts";
 import { AuthProvider } from "@/hooks/useAuth";
 import { AppShell } from "@/components/layout/AppShell";
 import { Toaster } from "@/components/ui/sonner";
@@ -37,8 +38,10 @@ export default async function RootLayout({
           <AuthProvider initialSession={session}>
             <CategoriesProvider>
               <TransactionsProvider>
-                <AppShell>{children}</AppShell>
-                <Toaster richColors position="top-right" />
+                <FixedCostsProvider>
+                  <AppShell>{children}</AppShell>
+                  <Toaster richColors position="top-right" />
+                </FixedCostsProvider>
               </TransactionsProvider>
             </CategoriesProvider>
           </AuthProvider>

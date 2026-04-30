@@ -9,6 +9,7 @@ import {
   ListChecks,
   LogOut,
   Moon,
+  Repeat,
   Sun,
   Tags,
   Wallet,
@@ -28,6 +29,7 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { href: "/", label: "Tổng quan", icon: LayoutDashboard },
   { href: "/transactions", label: "Chi tiêu", icon: ListChecks },
+  { href: "/recurring", label: "Cố định", icon: Repeat },
   { href: "/categories", label: "Danh mục", icon: Tags },
 ];
 

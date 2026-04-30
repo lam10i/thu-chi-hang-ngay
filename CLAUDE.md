@@ -76,6 +76,7 @@ src/
 │   ├── layout.tsx              # ThemeProvider → AuthProvider → CategoriesProvider → TransactionsProvider → AppShell + Toaster
 │   ├── page.tsx                # Dashboard "/" (SummaryCards + SpendingChart + CategoryPieChart + RecentTransactions)
 │   ├── transactions/page.tsx   # Danh sách chi tiêu "/transactions" (TransactionFilters + TransactionList)
+│   ├── recurring/page.tsx      # Chi phí cố định hằng tháng "/recurring" (CRUD + tổng tháng/năm)
 │   ├── categories/page.tsx     # Quản lý danh mục "/categories"
 │   ├── login/page.tsx          # Form Magic Link "/login" — public route
 │   ├── auth/callback/route.ts  # OAuth/OTP callback handler — đổi code thành session cookie
@@ -97,8 +98,10 @@ src/
 │   │   ├── TransactionFilters.tsx # Search + preset (Hôm nay/7d/30d/Tuần/Tháng/Tháng trước/Tự chọn) + date range
 │   │   ├── TransactionList.tsx # Bảng danh sách (nhận ListFilters, tự sort + tổng kết "Tìm thấy N · Tổng X")
 │   │   └── DeleteConfirm.tsx
-│   └── categories/
-│       └── CategoryForm.tsx    # Dialog thêm/sửa category (palette icon + màu)
+│   ├── categories/
+│   │   └── CategoryForm.tsx    # Dialog thêm/sửa category (palette icon + màu)
+│   └── recurring/
+│       └── FixedCostForm.tsx   # Dialog thêm/sửa chi phí cố định (tên + amount + category optional + note)
 ├── lib/
 │   ├── supabase/
 │   │   ├── client.ts           # createBrowserClient cho client components
@@ -109,13 +112,16 @@ src/
 ├── hooks/
 │   ├── useAuth.tsx             # AuthProvider (session từ cookie SSR + onAuthStateChange) + signOut
 │   ├── useTransactions.tsx     # CRUD async qua Supabase
-│   └── useCategories.tsx       # CRUD async qua Supabase
+│   ├── useCategories.tsx       # CRUD async qua Supabase
+│   └── useFixedCosts.tsx       # CRUD chi phí cố định + tổng/tháng
 ├── types/
 │   └── transaction.ts          # Transaction + Category
 └── middleware.ts               # Refresh session cookie + redirect chưa login → /login (PUBLIC_PATHS = /login, /auth/callback)
 
 supabase/
-└── schema.sql                  # SQL khởi tạo: 2 bảng + RLS policies + trigger seed danh mục mặc định khi user mới
+├── schema.sql                  # SQL khởi tạo: 2 bảng + RLS policies + trigger seed danh mục mặc định khi user mới
+└── migrations/
+    └── 002_fixed_costs.sql     # Migration: thêm bảng fixed_costs + RLS
 
 .github/workflows/
 └── keep-supabase-alive.yml     # Cron 5 ngày/lần ping REST API → chống Supabase free auto-pause sau 7 ngày
@@ -328,3 +334,11 @@ interface Category {
   - Workflow `.github/workflows/keep-supabase-alive.yml`: cron `0 0 */5 * *` ping `GET /rest/v1/categories?select=id&limit=1` với header `apikey + Authorization`. Coi 200/401/404 đều là DB awake (không lỗi network/timeout).
   - Secrets `SUPABASE_URL` + `SUPABASE_ANON_KEY` add vào GitHub repo (không commit, mặc dù anon key vốn public — best practice).
   - Có thể trigger manual qua Actions tab → "Run workflow" để test bất kỳ lúc nào.
+- **v0.9 — Chi phí cố định hằng tháng (Recurring page):**
+  - Trang mới `/recurring` (nav "Cố định") để CRUD các khoản phải trả đều đặn (tiền nhà, internet, gym, Netflix...). KHÔNG tự tạo transaction — chỉ là list tham khảo + thống kê tổng.
+  - Bảng mới `public.fixed_costs` (uuid, user_id, name, amount, category_id?, note?, created_at) + RLS theo `auth.uid()` — migration ở [supabase/migrations/002_fixed_costs.sql](supabase/migrations/002_fixed_costs.sql)
+  - `category_id` optional, tận dụng category sẵn có (link icon + màu). Nullable vì user có thể không phân loại.
+  - 2 thẻ tổng quan đầu trang: **Tổng/tháng** + **Tổng/năm (×12)**
+  - Files mới: `src/types/transaction.ts` (interface `FixedCost`), `src/hooks/useFixedCosts.tsx`, `src/components/recurring/FixedCostForm.tsx`, `src/app/recurring/page.tsx`
+  - `Header` thêm nav item "Cố định" (icon `Repeat`), `layout.tsx` wrap thêm `FixedCostsProvider`
+  - Form tận dụng `parseAmount()` từ v0.8 (gõ "5tr" → 5.000.000)
