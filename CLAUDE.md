@@ -103,7 +103,7 @@ src/
 │   ├── supabase/
 │   │   ├── client.ts           # createBrowserClient cho client components
 │   │   └── server.ts           # createServerClient cho server components / route handlers
-│   ├── format.ts               # formatVND, formatNumber, formatDate, todayISO
+│   ├── format.ts               # formatVND, formatNumber, formatDate, todayISO, parseAmount (hiểu "50k" / "1.5tr")
 │   ├── categories.ts           # DEFAULT_CATEGORIES (chỉ tham chiếu), CATEGORY_ICONS, CATEGORY_COLORS, stripDiacritics(), slugify()
 │   └── utils.ts                # cn() helper
 ├── hooks/
@@ -116,6 +116,9 @@ src/
 
 supabase/
 └── schema.sql                  # SQL khởi tạo: 2 bảng + RLS policies + trigger seed danh mục mặc định khi user mới
+
+.github/workflows/
+└── keep-supabase-alive.yml     # Cron 5 ngày/lần ping REST API → chống Supabase free auto-pause sau 7 ngày
 ```
 
 > **Lưu ý:** Next.js 16 cảnh báo file `middleware.ts` deprecated, đề xuất đổi thành `proxy.ts`. Hiện tại vẫn chạy bình thường, chưa cần migrate gấp.
@@ -200,38 +203,31 @@ interface Category {
 ### Đã làm
 - [x] CRUD chi tiêu + danh mục
 - [x] Dashboard 3 thẻ Hôm nay/Tuần/Tháng
-- [x] Bar chart theo ngày/tuần/tháng + **navigation lùi/tới khoảng tuỳ ý + date picker**
-- [x] Pie chart phân bổ theo danh mục + **navigation tuần/tháng tuỳ ý**
+- [x] Bar chart theo ngày/tuần/tháng + navigation lùi/tới khoảng tuỳ ý + date picker
+- [x] Pie chart phân bổ theo danh mục + navigation tuần/tháng tuỳ ý
 - [x] Filter + search + date range
 - [x] Cloud sync (Supabase) + auth Magic Link
 - [x] Deploy production Vercel
+- [x] **Quick parse "50k" / "1.5tr" trong amount input**
+- [x] **GitHub Actions cron ping chống Supabase auto-pause 7 ngày**
 
 ### Bước tiếp theo (đề xuất priority)
 
-1. **🔥 Cao — chống Supabase free tier auto-pause sau 7 ngày không activity**
-   - User mở app hằng ngày thì không lo, nhưng nếu nghỉ phép vài tuần → app down, phải vào Supabase bấm Resume
-   - Option A: Setup Vercel Cron Job (cần Pro plan, bỏ qua) hoặc GitHub Actions chạy cron ping
-   - Option B: Coi như chấp nhận, có vấn đề thì Resume thủ công
-
-2. **🔥 Cao — Setup custom SMTP (Resend) để hết bị rate limit email 3-4/giờ**
+1. **🔥 Cao — Setup custom SMTP (Resend) để hết bị rate limit email 3-4/giờ**
    - Resend free tier 100 emails/ngày. Vào Supabase → Auth → SMTP Settings paste config
    - Cần thiết nếu hay đăng xuất rồi đăng nhập lại trên nhiều thiết bị
 
-3. **TB — Quick parse "k/tr" trong amount input**
-   - Gõ "50k" → 50.000, "1.5tr" → 1.500.000. Tiện cho người Việt
-   - File: [src/components/transactions/TransactionForm.tsx](src/components/transactions/TransactionForm.tsx)
-
-4. **TB — Edit transaction với category đã xoá**
+2. **TB — Edit transaction với category đã xoá**
    - Mở edit → Select category trống vì id cũ không còn. Hiện badge cảnh báo + buộc chọn lại
 
-5. **TB — Bảng transactions overflow ngang trên mobile**
+3. **TB — Bảng transactions overflow ngang trên mobile**
    - Bọc `<Table>` trong `<div className="overflow-x-auto">`
 
-6. **Thấp — Export/Import JSON backup** (giờ ít cần vì đã có cloud, nhưng để user tự backup vẫn hữu ích)
+4. **Thấp — Export/Import JSON backup** (giờ ít cần vì đã có cloud, nhưng để user tự backup vẫn hữu ích)
 
-7. **Thấp — PWA / Add to Home Screen UX** (manifest + icons)
+5. **Thấp — PWA / Add to Home Screen UX** (manifest + icons)
 
-8. **Thấp — Recurring expenses, Budget per category**
+6. **Thấp — Recurring expenses, Budget per category**
 
 ### Đã KHÔNG làm (cố tình)
 - ❌ **Thu nhập / số dư** — app chỉ ghi chi tiêu
@@ -326,3 +322,9 @@ interface Category {
     - `all`: bỏ qua anchor, ẩn toàn bộ control nav
   - Header label theo range: tuần "02/04 – 08/04", tháng "04/2026", all "Tất cả"
   - Nút `→` disabled khi `anchor + 1 unit > today`
+- **v0.8 — Quick parse "50k" / "1.5tr" + GitHub Actions chống Supabase auto-pause:**
+  - Hàm `parseAmount()` mới trong [src/lib/format.ts](src/lib/format.ts): hiểu suffix `k` (×1.000), `tr` / `m` (×1.000.000), chấp nhận decimal `1.5` hoặc `1,5`. Không suffix → strip non-digits như cũ.
+  - `TransactionForm` input amount: `inputMode="text"` (không còn "numeric"), placeholder hint "Vd: 50k = 50.000, 1.5tr = 1.500.000". Khi gõ shorthand giữ nguyên text + hiện preview "= 50.000 ₫" bên dưới. Format `1.234.567` khi blur hoặc khi gõ pure digits.
+  - Workflow `.github/workflows/keep-supabase-alive.yml`: cron `0 0 */5 * *` ping `GET /rest/v1/categories?select=id&limit=1` với header `apikey + Authorization`. Coi 200/401/404 đều là DB awake (không lỗi network/timeout).
+  - Secrets `SUPABASE_URL` + `SUPABASE_ANON_KEY` add vào GitHub repo (không commit, mặc dù anon key vốn public — best practice).
+  - Có thể trigger manual qua Actions tab → "Run workflow" để test bất kỳ lúc nào.

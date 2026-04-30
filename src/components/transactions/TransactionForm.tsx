@@ -29,7 +29,7 @@ import { CategoryIcon } from "@/components/category-icon";
 import { CategoryForm } from "@/components/categories/CategoryForm";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useCategories } from "@/hooks/useCategories";
-import { todayISO, formatNumber } from "@/lib/format";
+import { todayISO, formatNumber, parseAmount, formatVND } from "@/lib/format";
 import type { Transaction } from "@/types/transaction";
 
 const schema = z.object({
@@ -93,10 +93,14 @@ export function TransactionForm({ open, onOpenChange, editing }: TransactionForm
   const [amountDisplay, setAmountDisplay] = useState(
     defaults.amount > 0 ? formatNumber(defaults.amount) : "",
   );
+  const [amountValue, setAmountValue] = useState(defaults.amount);
 
   useEffect(() => {
     setAmountDisplay(defaults.amount > 0 ? formatNumber(defaults.amount) : "");
+    setAmountValue(defaults.amount);
   }, [defaults]);
+
+  const hasShorthand = /[a-z]/i.test(amountDisplay);
 
   const onSubmit = handleSubmit(async (values) => {
     const payload = {
@@ -133,18 +137,33 @@ export function TransactionForm({ open, onOpenChange, editing }: TransactionForm
               <Label htmlFor="amount">Số tiền (VND)</Label>
               <Input
                 id="amount"
-                inputMode="numeric"
+                inputMode="text"
                 autoComplete="off"
-                placeholder="0"
+                placeholder="Vd: 50k = 50.000, 1.5tr = 1.500.000"
                 value={amountDisplay}
                 className="text-lg font-semibold"
                 onChange={(e) => {
-                  const digits = e.target.value.replace(/\D/g, "");
-                  const num = digits ? Number(digits) : 0;
-                  setAmountDisplay(digits ? formatNumber(num) : "");
+                  const raw = e.target.value;
+                  const num = parseAmount(raw);
+                  setAmountValue(num);
                   setValue("amount", num, { shouldValidate: true });
+                  // Đang gõ shorthand (k/tr/m) → giữ nguyên text; chỉ pure digits → format ngay
+                  if (/[a-z]/i.test(raw)) {
+                    setAmountDisplay(raw);
+                  } else {
+                    const digits = raw.replace(/\D/g, "");
+                    setAmountDisplay(digits ? formatNumber(Number(digits)) : "");
+                  }
+                }}
+                onBlur={() => {
+                  if (amountValue > 0) setAmountDisplay(formatNumber(amountValue));
                 }}
               />
+              {hasShorthand && amountValue > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  = {formatVND(amountValue)}
+                </p>
+              )}
               {errors.amount && (
                 <p className="text-xs text-rose-600">{errors.amount.message}</p>
               )}

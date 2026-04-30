@@ -1,0 +1,38 @@
+name: Keep Supabase Alive
+
+# Supabase free tier auto-pause project sau 7 ngày không activity.
+# Workflow này ping REST API mỗi 5 ngày (đệm an toàn) để giữ project sống.
+# Có thể trigger thủ công qua Actions tab → "Run workflow".
+
+on:
+  schedule:
+    - cron: "0 0 */5 * *"  # 00:00 UTC mỗi 5 ngày
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping Supabase REST API
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_KEY:-}" ]; then
+            echo "::error::Thiếu SUPABASE_URL hoặc SUPABASE_ANON_KEY trong GitHub Secrets"
+            exit 1
+          fi
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            "$SUPABASE_URL/rest/v1/categories?select=id&limit=1" \
+            -H "apikey: $SUPABASE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_KEY")
+          echo "HTTP status: $status"
+          # 200 = ok, 401 = key sai, 404 = table không tồn tại — tất cả đều chứng tỏ DB awake
+          if [ "$status" = "200" ] || [ "$status" = "401" ] || [ "$status" = "404" ]; then
+            echo "✅ Supabase project alive"
+          else
+            echo "::error::Ping failed với status $status"
+            exit 1
+          fi
