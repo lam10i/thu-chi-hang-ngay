@@ -27,7 +27,8 @@ export function formatDate(iso: string, pattern = "dd/MM/yyyy"): string {
 
 /**
  * Parse số tiền nhập tự do của người dùng VN.
- * - Có suffix k/tr/m: "50k" → 50.000, "1.5tr" → 1.500.000, "1,5m" → 1.500.000
+ * - Suffix k/tr/m ở cuối: "50k" → 50.000, "1.5tr" → 1.500.000, "1,5m" → 1.500.000
+ * - Digits sau suffix (cách nói VN): "1tr5" → 1.500.000, "2tr500" → 2.500.000, "50k5" → 50.500
  * - Không suffix: chỉ giữ chữ số ("1.500" / "1,500" / "1500" → 1500)
  * - Trả về 0 nếu rỗng / không parse được.
  */
@@ -35,9 +36,11 @@ export function parseAmount(input: string): number {
   const trimmed = input.trim().toLowerCase();
   if (!trimmed) return 0;
 
-  const suffixMatch = trimmed.match(/^([\d.,]+)\s*(k|tr|m)$/);
+  const suffixMatch = trimmed.match(/^([\d.,]+)\s*(k|tr|m)\s*(\d*)$/);
   if (suffixMatch) {
-    const numStr = suffixMatch[1].replace(",", ".");
+    const head = suffixMatch[1].replace(",", ".");
+    const tail = suffixMatch[3];
+    const numStr = tail ? `${head.split(".")[0]}.${tail}` : head;
     const num = Number(numStr);
     if (!isFinite(num)) return 0;
     const multiplier = suffixMatch[2] === "k" ? 1_000 : 1_000_000;

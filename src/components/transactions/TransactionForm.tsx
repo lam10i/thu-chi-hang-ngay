@@ -139,7 +139,7 @@ export function TransactionForm({ open, onOpenChange, editing }: TransactionForm
                 id="amount"
                 inputMode="text"
                 autoComplete="off"
-                placeholder="Vd: 50k = 50.000, 1.5tr = 1.500.000"
+                placeholder="Vd: 50k = 50.000, 1tr5 = 1.500.000"
                 value={amountDisplay}
                 className="text-lg font-semibold"
                 onChange={(e) => {
